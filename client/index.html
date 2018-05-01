@@ -6,7 +6,7 @@
     <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
 </head>
 <body>
-    <div id="singDiv">
+    <div id="signDiv">
         Username: <input id="signDiv-username" type="text"></input><br>
         Password: <input id="signDiv-password" type="password"></input>
         <button id="signDiv-signIn">Sign in</button>
@@ -36,12 +36,25 @@
     signDivSignIn.onclick = () => {
         socket.emit("signIn", {username: signDivUsername.value, password: signDivPassword.value});
     };
+
+    signDivSignUp.onclick = () => {
+        socket.emit("signUp", {username: signDivUsername.value, password: signDivPassword.value});
+    };
+
     socket.on("signInResponse", (data) => {
         if (data.success) {
             signDiv.style.display = "none";
             gameDiv.style.display = "inline-block";
         } else {
             alert("Sign in unsuccessful");
+        }
+    });
+
+    socket.on("signUpResponse", (data) => {
+        if (data.success) {
+            alert("Sign up successful!");
+        } else {
+            alert("Username taken!");
         }
     });
 
@@ -60,7 +73,7 @@
             ctx.fillText(data.player[i].number, data.player[i].x, data.player[i].y);
         }
         for (var i = 0; i < data.bullet.length; i++) {
-            ctx.fillRect(data.bullet[i].x-5, data.bullet[i].y-5,10,10);
+            ctx.fillRect(data.bullet[i].x-3, data.bullet[i].y-3,5,5); // size of bullet
         }
     });
 

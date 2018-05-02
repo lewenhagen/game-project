@@ -18,7 +18,7 @@
             <div>Hello!</div>
         </div>
         <form id="chat-form">
-            <input id="chat-input" type="text" style="width:500px;"></input>
+            <input id="chat-input" type="text" style="width: 500px;"></input>
         </form>
     </div>
 
@@ -26,7 +26,7 @@
 <script>
     var socket = io();
 
-    // sign
+    // SIGN IN/UP
     var signDiv = document.getElementById("signDiv");
     var signDivUsername = document.getElementById("signDiv-username");
     var signDivSignIn = document.getElementById("signDiv-signIn");
@@ -58,24 +58,10 @@
         }
     });
 
-    // game
+    // CHAT
     var chatText = document.getElementById("chat-text");
     var chatInput = document.getElementById("chat-input");
     var chatForm = document.getElementById("chat-form");
-    var ctx = document.getElementById("ctx").getContext("2d");
-    ctx.font = "30px Arial";
-
-
-
-    socket.on("newPosition", (data) => {
-        ctx.clearRect(0,0,500,500);
-        for (var i = 0; i < data.player.length; i++) {
-            ctx.fillText(data.player[i].number, data.player[i].x, data.player[i].y);
-        }
-        for (var i = 0; i < data.bullet.length; i++) {
-            ctx.fillRect(data.bullet[i].x-3, data.bullet[i].y-3,5,5); // size of bullet
-        }
-    });
 
     socket.on("addToChat", (data) => {
         chatText.innerHTML += "<div>" + data + "</div>";
@@ -98,6 +84,94 @@
         console.log("Chat message:" + chatInput.value);
         chatInput.value = "";
     };
+
+
+    // GAME
+    var ctx = document.getElementById("ctx").getContext("2d");
+    ctx.font = "30px Arial";
+
+    // initPack contains all data from server
+    var Player = (initPack) => {
+        var self = {};
+        self.id = initPack.id;
+        self.number = initPack.number;
+        self.x = initPack.x;
+        self.y = initPack.y;
+        Player.list[self.id] = self;
+
+        return self;
+    }
+
+    Player.list = {};
+
+    var Bullet = (initPack) => {
+        var self = {};
+        self.id = initPack.id;
+        self.x = initPack.x;
+        self.y = initPack.y;
+        Bullet.list[self.id] = self;
+
+        return self;
+    }
+
+    Bullet.list = {};
+
+    socket.on("init", (data) => {
+        for (var i = 0; i < data.player.length; i++) {
+            Player(data.player[i]);
+        }
+        for (var i = 0; i < data.bullet.length; i++) {
+            Bullet(data.bullet[i]);
+        }
+    });
+
+    socket.on("update", (data) => {
+        for (var i = 0; i < data.player.length; i++) {
+            var pack = data.player[i];
+            var p = Player.list[pack.id];
+            if (p) {
+                if (pack.x !== undefined) {
+                    p.x = pack.x;
+                }
+                if (pack.y !== undefined) {
+                    p.y = pack.y;
+                }
+            }
+        }
+        for (var i = 0; i < data.bullet.length; i++) {
+            var pack = data.bullet[i];
+            var b = Bullet.list[data.bullet[i].id];
+            if (b) {
+                if (pack.x !== undefined) {
+                    b.x = pack.x;
+                }
+                if (pack.y !== undefined) {
+                    b.y = pack.y;
+                }
+            }
+        }
+    });
+
+    socket.on("remove", (data) => {
+        for (var i = 0; i < data.player.length; i++) {
+            delete Player.list[data.player[i]];
+        }
+        for (var i = 0; i < data.bullet.length; i++) {
+            delete Bullet.list[data.bullet[i]];
+        }
+    });
+
+    setInterval(function() {
+        ctx.clearRect(0,0,500,500);
+        for (var i in Player.list) {
+            ctx.fillText(Player.list[i].number, Player.list[i].x, Player.list[i].y);
+        }
+        for (var i in Bullet.list) {
+            ctx.fillRect(Bullet.list[i].x-5, Bullet.list[i].y-5,10,10); // size of bullet
+        }
+    }, 40);
+
+
 
     document.onkeydown = (event) => {
         if (event.keyCode === 68) { // D

@@ -1,6 +1,10 @@
 var express = require("express");
 var app = express();
 var serv = require("http").Server(app);
+const account = require("./server/src/account.js");
+
+app.set("view engine", "ejs");
+
 
 app.get("/", (req, res) => {
     res.sendFile(__dirname + "/client/index.html");
@@ -39,6 +43,7 @@ var Player = (id) => {
     var self = Entity();
 
     self.id = id;
+    self.username = "";
     self.number = Math.floor(10 * Math.random()).toString();
     self.pressingRight = false;
     self.pressingLeft = false;
@@ -47,7 +52,7 @@ var Player = (id) => {
     self.pressingAttack = false;
     self.mouseAngle = 0;
 
-    self.maxSpd = 10;
+    self.maxSpd = 1;
 
     var super_update = self.update;
 
@@ -84,6 +89,12 @@ var Player = (id) => {
         }
     }
     Player.list[id] = self;
+    initPack.player.push({
+        id: self.id,
+        x: self.x,
+        y: self.y,
+        number: self.number
+    });
     return self;
 };
 
@@ -110,6 +121,7 @@ Player.onConnect = function(socket) {
 
 Player.onDisconnect = function(socket) {
     delete Player.list[socket.id];
+    removePack.player.push(socket.id);
 }
 
 Player.update = function() {
@@ -118,9 +130,9 @@ Player.update = function() {
         var player = Player.list[i];
         player.update();
         pack.push({
+            id: player.id,
             x: player.x,
             y: player.y,
-            number: player.number
         });
     }
     return pack;
@@ -132,6 +144,7 @@ var Bullet = (parent, angle) => {
     self.spdX = Math.cos(angle/180*Math.PI) * 10;
     self.spdY = Math.sin(angle/180*Math.PI) * 10;
     self.parent = parent;
+
     self.timer = 0;
     self.toRemove = false;
     var super_update = self.update;
@@ -151,6 +164,11 @@ var Bullet = (parent, angle) => {
         }
     }
     Bullet.list[self.id] = self;
+    initPack.bullet.push({
+        id: self.id,
+        x: self.x,
+        y: self.y
+    });
     return self;
 }
 Bullet.list = {};
@@ -162,8 +180,10 @@ Bullet.update = function() {
         bullet.update();
         if (bullet.toRemove) {
             delete Bullet.list[i];
+            removePack.bullet.push(bullet.id);
         } else {
             pack.push({
+                id: bullet.id,
                 x: bullet.x,
                 y: bullet.y
             });
@@ -174,35 +194,37 @@ Bullet.update = function() {
 
 var DEBUG = true;
 
-var USERS = {
-    //username:password
-    "bob": "bob123",
-    "kenneth": "kenneth123",
-    "malin": "malin123"
-}
+// var USERS = {
+//     //username:password
+//     "bob": "bob123",
+//     "kenneth": "kenneth123",
+//     "malin": "malin123"
+// }
 
-var isValidPassword = function(data) {
-    return USERS[data.username] === data.password;
-}
-
-var isUserNameTaken = function(data) {
-    return USERS[data.username];
-}
-
-var addUser = function(data) {
-    return USERS[data.username] = data.password;
-}
+// var isValidPassword = function(data) {
+//     return USERS[data.username] === data.password;
+// }
+//
+// var isUserNameTaken = function(data) {
+//     return USERS[data.username];
+// }
+//
+// var addUser = async function(data) {
+//     return USERS[data.username] = data.password;
+// }
 
 var io = require("socket.io")(serv, {});
-io.sockets.on("connection", (socket) => {
+io.sockets.on("connection", async (socket) => {
     console.log("socket connection!");
     socket.id = Math.random();
     SOCKET_LIST[socket.id] = socket;
 
 
-    socket.on("signIn", (data) => {
-        if (isValidPassword(data)) {
+    socket.on("signIn", async (data) => {
+        let isValid = await account.isValidPassword(data.username, data.password);
+        if (isValid.length === 1) {
             Player.onConnect(socket);
+            Player.list[socket.id].username = data.username;
             socket.emit("signInResponse", {success: true});
             console.log("Login success!");
         } else {
@@ -211,9 +233,11 @@ io.sockets.on("connection", (socket) => {
         }
     });
 
-    socket.on("signUp", (data) => {
-        if (!isUserNameTaken(data)) {
-            addUser(data)
+    socket.on("signUp", async (data) => {
+        let isTaken = await account.checkForDuplicates(data.username);
+
+        if (isTaken.length === 0) {
+            await account.addUser(data.username, data.password);
             socket.emit("signUpResponse", {success: true});
             console.log("User added!");
         } else {
@@ -230,7 +254,7 @@ io.sockets.on("connection", (socket) => {
     });
 
     socket.on("sendMsgToServer", (data) => {
-        var playerName = socket.id.toString().slice(2, 7);
+        var playerName = Player.list[socket.id].username;
         for (var i in SOCKET_LIST) {
             SOCKET_LIST[i].emit("addToChat", playerName + ": " + data);
         }
@@ -247,7 +271,17 @@ io.sockets.on("connection", (socket) => {
 
 });
 
-setInterval(() => {
+var initPack = {
+    player: [],
+    bullet: []
+}
+
+var removePack = {
+    player: [],
+    bullet: []
+}
+
+setInterval(function() {
     var pack = {
         player: Player.update(),
         bullet: Bullet.update()
@@ -255,6 +289,12 @@ setInterval(() => {
 
     for(var i in SOCKET_LIST) {
         var socket = SOCKET_LIST[i];
-        socket.emit("newPosition", pack);
+        socket.emit("init", initPack);
+        socket.emit("update", pack);
+        socket.emit("remove", removePack);
     }
+    initPack.player = [];
+    initPack.bullet = [];
+    removePack.player = [];
+    removePack.bullet = [];
 }, 1000/25);
